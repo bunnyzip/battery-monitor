@@ -1,0 +1,268 @@
+substitutions:
+  name: bms-monitor
+  bms0: "Battery 1"
+  bms1: "Battery 2"
+  external_components_source: github://syssi/esphome-jbd-bms@main
+
+esphome:
+  name: ${name}
+  friendly_name: "BMS Monitor"
+  project:
+    name: "syssi.esphome-jbd-bms"
+    version: 2.5.0
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP_MAIN_TASK_STACK_SIZE: "8192"
+
+external_components:
+  - source: ${external_components_source}
+    refresh: 0s
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: "!secret wifi_password"
+  ap:
+    ssid: !secret wifi_ssid
+    password: "!secret wifi_password"
+
+captive_portal:
+
+api:
+  encryption:
+    key: "QfO4TyHZ0MZmLbBZv0SxRfd6BPEKGW2tP5qYmS0siXo="
+
+ota:
+  - platform: esphome
+    password: "!secret wifi_password"
+
+web_server:
+  port: 80
+
+logger:
+  level: DEBUG
+  baud_rate: 0
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+
+ble_client:
+  - id: client0
+    mac_address: A5:C2:37:47:3C:37
+  - id: client1
+    mac_address: A5:C2:37:47:31:1B
+
+jbd_bms_ble:
+  - id: bms0
+    ble_client_id: client0
+    update_interval: 10s
+    auto_retrieve_hardware_version: false
+  - id: bms1
+    ble_client_id: client1
+    update_interval: 10s
+    auto_retrieve_hardware_version: false
+
+binary_sensor:
+  - platform: jbd_bms_ble
+    jbd_bms_ble_id: bms0
+    charging:
+      id: b1_charging
+      name: "${bms0} charging"
+    discharging:
+      id: b1_discharging
+      name: "${bms0} discharging"
+    online_status:
+      id: b1_online_status
+      name: "${bms0} online"
+  - platform: jbd_bms_ble
+    jbd_bms_ble_id: bms1
+    charging:
+      id: b2_charging
+      name: "${bms1} charging"
+    discharging:
+      id: b2_discharging
+      name: "${bms1} discharging"
+    online_status:
+      id: b2_online_status
+      name: "${bms1} online"
+
+sensor:
+  - platform: jbd_bms_ble
+    jbd_bms_ble_id: bms0
+    total_voltage:
+      id: b1_total_voltage
+      name: "${bms0} voltage"
+    current:
+      id: b1_current
+      name: "${bms0} current"
+    state_of_charge:
+      id: b1_state_of_charge
+      name: "${bms0} SOC"
+    capacity_remaining:
+      id: b1_capacity_remaining
+      name: "${bms0} capacity remaining"
+    charging_cycles:
+      id: b1_charging_cycles
+      name: "${bms0} cycles"
+    average_cell_voltage:
+      id: b1_average_cell_voltage
+      name: "${bms0} avg cell voltage"
+    min_cell_voltage:
+      id: b1_min_cell_voltage
+      name: "${bms0} min cell voltage"
+    max_cell_voltage:
+      id: b1_max_cell_voltage
+      name: "${bms0} max cell voltage"
+    temperature_1:
+      id: b1_temperature_1
+      name: "${bms0} temperature 1"
+    cell_voltage_1:
+      id: b1_cell_voltage_1
+      name: "${bms0} cell 1"
+    cell_voltage_2:
+      id: b1_cell_voltage_2
+      name: "${bms0} cell 2"
+    cell_voltage_3:
+      id: b1_cell_voltage_3
+      name: "${bms0} cell 3"
+    cell_voltage_4:
+      id: b1_cell_voltage_4
+      name: "${bms0} cell 4"
+  - platform: jbd_bms_ble
+    jbd_bms_ble_id: bms1
+    total_voltage:
+      id: b2_total_voltage
+      name: "${bms1} voltage"
+    current:
+      id: b2_current
+      name: "${bms1} current"
+    state_of_charge:
+      id: b2_state_of_charge
+      name: "${bms1} SOC"
+    capacity_remaining:
+      id: b2_capacity_remaining
+      name: "${bms1} capacity remaining"
+    charging_cycles:
+      id: b2_charging_cycles
+      name: "${bms1} cycles"
+    average_cell_voltage:
+      id: b2_average_cell_voltage
+      name: "${bms1} avg cell voltage"
+    min_cell_voltage:
+      id: b2_min_cell_voltage
+      name: "${bms1} min cell voltage"
+    max_cell_voltage:
+      id: b2_max_cell_voltage
+      name: "${bms1} max cell voltage"
+    temperature_1:
+      id: b2_temperature_1
+      name: "${bms1} temperature 1"
+    cell_voltage_1:
+      id: b2_cell_voltage_1
+      name: "${bms1} cell 1"
+    cell_voltage_2:
+      id: b2_cell_voltage_2
+      name: "${bms1} cell 2"
+    cell_voltage_3:
+      id: b2_cell_voltage_3
+      name: "${bms1} cell 3"
+    cell_voltage_4:
+      id: b2_cell_voltage_4
+      name: "${bms1} cell 4"
+
+text_sensor:
+  - platform: jbd_bms_ble
+    jbd_bms_ble_id: bms0
+    errors:
+      id: b1_errors
+      name: "${bms0} errors"
+  - platform: jbd_bms_ble
+    jbd_bms_ble_id: bms1
+    errors:
+      id: b2_errors
+      name: "${bms1} errors"
+
+time:
+  - platform: sntp
+    id: home_time
+
+http_request:
+  verify_ssl: false
+  timeout: 10s
+
+interval:
+  - interval: 60s
+    then:
+      - http_request.send:
+          method: PUT
+          url: "https://YOUR-PROJECT.firebasedatabase.app/batteries/1.json?auth=YOUR_FIREBASE_DB_SECRET"
+          request_headers:
+            Content-Type: application/json
+          json: |-
+            if (isnan(id(b1_state_of_charge).state)) return;
+            root["v"] = id(b1_total_voltage).state;
+            root["a"] = id(b1_current).state;
+            root["soc"] = id(b1_state_of_charge).state;
+            root["t"] = id(b1_temperature_1).state;
+            root["cycles"] = id(b1_charging_cycles).state;
+            root["c1"] = id(b1_cell_voltage_1).state;
+            root["c2"] = id(b1_cell_voltage_2).state;
+            root["c3"] = id(b1_cell_voltage_3).state;
+            root["c4"] = id(b1_cell_voltage_4).state;
+            root["ts"] = id(home_time).now().timestamp;
+      - http_request.send:
+          method: PUT
+          url: "https://YOUR-PROJECT.firebasedatabase.app/batteries/2.json?auth=YOUR_FIREBASE_DB_SECRET"
+          request_headers:
+            Content-Type: application/json
+          json: |-
+            if (isnan(id(b2_state_of_charge).state)) return;
+            root["v"] = id(b2_total_voltage).state;
+            root["a"] = id(b2_current).state;
+            root["soc"] = id(b2_state_of_charge).state;
+            root["t"] = id(b2_temperature_1).state;
+            root["cycles"] = id(b2_charging_cycles).state;
+            root["c1"] = id(b2_cell_voltage_1).state;
+            root["c2"] = id(b2_cell_voltage_2).state;
+            root["c3"] = id(b2_cell_voltage_3).state;
+            root["c4"] = id(b2_cell_voltage_4).state;
+            root["ts"] = id(home_time).now().timestamp;
+  - interval: 5min
+    then:
+      - http_request.post:
+          url: "https://YOUR-PROJECT.firebasedatabase.app/history/1.json?auth=YOUR_FIREBASE_DB_SECRET"
+          request_headers:
+            Content-Type: application/json
+          json: |-
+            if (isnan(id(b1_state_of_charge).state)) return;
+            root["v"] = id(b1_total_voltage).state;
+            root["a"] = id(b1_current).state;
+            root["soc"] = id(b1_state_of_charge).state;
+            root["ts"] = id(home_time).now().timestamp;
+      - http_request.post:
+          url: "https://YOUR-PROJECT.firebasedatabase.app/history/2.json?auth=YOUR_FIREBASE_DB_SECRET"
+          request_headers:
+            Content-Type: application/json
+          json: |-
+            if (isnan(id(b2_state_of_charge).state)) return;
+            root["v"] = id(b2_total_voltage).state;
+            root["a"] = id(b2_current).state;
+            root["soc"] = id(b2_state_of_charge).state;
+            root["ts"] = id(home_time).now().timestamp;
+
+  - interval: 10s
+    then:
+      - logger.log: "INTERVAL FIRED - posting NETTEST"
+      - http_request.post:
+          url: "http://192.168.88.11:8111/api/battery"
+          request_headers:
+            Content-Type: application/json
+          json: |-
+            root["id"] = "NETTEST";
+            root["v"] = 1.23;
+            root["soc"] = 55;
+            root["ts"] = id(home_time).now().timestamp;
