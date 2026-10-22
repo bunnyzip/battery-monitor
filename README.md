@@ -5,7 +5,7 @@ Live LiFePO4 battery dashboard — ESP32-C3 + two JBD BMS batteries → Firebase
 **No server, no PC needed.** The board pushes readings straight to Firebase;
 this static page reads them in your browser.
 
-👉 **Live page:** https://.github.io/battery-monitor/ *(enable GitHub Pages: Settings → Pages → main branch)*
+👉 **Live page:** https://bunnyzip.github.io/battery-monitor/ *(enable GitHub Pages: Settings → Pages → main branch)*
 
 ## How it works
 
