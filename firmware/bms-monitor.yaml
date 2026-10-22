@@ -190,6 +190,20 @@ time:
   - platform: sntp
     id: home_time
 
+globals:
+  - id: tank_lvl
+    type: float
+    initial_value: '0'
+    restore_value: false
+  - id: tank_pump
+    type: std::string
+    initial_value: '""'
+    restore_value: false
+  - id: tank_ok
+    type: bool
+    initial_value: 'false'
+    restore_value: false
+
 http_request:
   verify_ssl: false
   timeout: 10s
@@ -197,6 +211,38 @@ http_request:
 interval:
   - interval: 60s
     then:
+      # ---- tank: read the tank web page over LAN ----
+      - http_request.get:
+          url: "http://192.168.88.24/"
+          capture_response: on
+          on_response:
+            then:
+              - lambda: |-
+                  size_t p = body.find("Level: ");
+                  if (p != std::string::npos) {
+                    id(tank_lvl) = strtof(body.c_str() + p + 7, nullptr);
+                    id(tank_ok) = true;
+                  } else {
+                    id(tank_ok) = false;
+                  }
+                  size_t q = body.find("PUMP: ");
+                  if (q != std::string::npos) {
+                    std::string ps = body.substr(q + 6, 3);
+                    if (ps.find("OFF") != std::string::npos) id(tank_pump) = "OFF";
+                    else if (ps.find("ON") != std::string::npos) id(tank_pump) = "ON";
+                  }
+      # ---- tank: push snapshot to Firebase ----
+      - http_request.send:
+          method: PUT
+          url: "https://YOUR-PROJECT.firebasedatabase.app/tank/latest.json?auth=YOUR_FIREBASE_DB_SECRET"
+          request_headers:
+            Content-Type: application/json
+          json: |-
+            root["lvl"] = id(tank_lvl);
+            root["pump"] = id(tank_pump);
+            root["online"] = id(tank_ok);
+            root["ts"] = id(home_time).now().timestamp;
+      # ---- batteries ----
       - http_request.send:
           method: PUT
           url: "https://YOUR-PROJECT.firebasedatabase.app/batteries/1.json?auth=YOUR_FIREBASE_DB_SECRET"
@@ -231,8 +277,16 @@ interval:
             root["c3"] = id(b2_cell_voltage_3).state;
             root["c4"] = id(b2_cell_voltage_4).state;
             root["ts"] = id(home_time).now().timestamp;
-  - interval: 5min
+  - interval: 60s
     then:
+      - http_request.post:
+          url: "https://YOUR-PROJECT.firebasedatabase.app/tank_history.json?auth=YOUR_FIREBASE_DB_SECRET"
+          request_headers:
+            Content-Type: application/json
+          json: |-
+            root["lvl"] = id(tank_lvl);
+            root["pump"] = id(tank_pump);
+            root["ts"] = id(home_time).now().timestamp;
       - http_request.post:
           url: "https://YOUR-PROJECT.firebasedatabase.app/history/1.json?auth=YOUR_FIREBASE_DB_SECRET"
           request_headers:
@@ -254,15 +308,3 @@ interval:
             root["soc"] = id(b2_state_of_charge).state;
             root["ts"] = id(home_time).now().timestamp;
 
-  - interval: 10s
-    then:
-      - logger.log: "INTERVAL FIRED - posting NETTEST"
-      - http_request.post:
-          url: "http://192.168.88.11:8111/api/battery"
-          request_headers:
-            Content-Type: application/json
-          json: |-
-            root["id"] = "NETTEST";
-            root["v"] = 1.23;
-            root["soc"] = 55;
-            root["ts"] = id(home_time).now().timestamp;
