@@ -36,6 +36,16 @@
   .stats { display: flex; justify-content: space-between; font-size: 0.82em; color: #34495e; border-top: 1px solid #e3e9ef; padding-top: 8px; }
   .stats b { color: #0b2545; }
   canvas { width: 100%; height: 60px; margin-top: 10px; }
+  .panel { background: #fff; color: #123; border-radius: 16px; padding: 18px;
+           box-shadow: 0 8px 24px rgba(0,0,0,0.35); max-width: 900px; margin: 16px auto 0; }
+  .panel h3 { color: #1a5dad; font-size: 1.05em; border-bottom: 2px solid #1a5dad; display: inline-block; padding-bottom: 2px; margin-bottom: 10px; }
+  .pills { display: flex; gap: 10px; flex-wrap: wrap; }
+  .pill { border: 2px solid #3498db; border-radius: 10px; padding: 6px 14px; color: #16324f; font-size: .9em; }
+  .pill b.ok { color: #27ae60; } .pill b.bad { color: #e74c3c; } .pill b { color: #1a5dad; }
+  table { width: 100%; border-collapse: collapse; font-size: .88em; }
+  th { background: #1a5dad; color: #fff; text-align: left; padding: 7px 10px; }
+  td { padding: 6px 10px; border-bottom: 1px solid #e3e9ef; color: #16324f; }
+  tr:nth-child(even) td { background: #f2f7fc; }
   .footer { text-align: center; font-size: 0.75em; opacity: 0.7; margin-top: 18px; }
   .footer a { color: #9ad3ff; }
 </style>
@@ -46,6 +56,24 @@
     <div class="status-line" id="status"><span class="dot stale"></span>connecting…</div>
   </div>
   <div class="grid" id="grid"></div>
+
+  <div class="panel">
+    <h3>🩺 System health</h3>
+    <div class="pills" id="health"></div>
+  </div>
+
+  <div class="panel">
+    <h3>📅 Daily summary</h3>
+    <table><thead><tr><th>Day</th><th>Battery</th><th>SOC range</th><th>Avg SOC</th><th>Records</th></tr></thead>
+    <tbody id="daily"></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h3>📌 Recent events</h3>
+    <table><thead><tr><th>Time</th><th style="width:60%">Event</th></tr></thead>
+    <tbody id="events"></tbody></table>
+  </div>
+
   <div class="footer">
     Data straight from the ESP32 board → Firebase · auto-refresh 30s · no server needed<br>
     <a href="https://github.com/bunnyzip/battery-monitor">project repo</a>
@@ -116,18 +144,85 @@ function drawSpark(n, hist) {
   ctx.stroke();
 }
 
+function fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + ", " +
+         d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+function dayKey(ts) { return new Date(ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
+
+function renderHealth(datas) {
+  const el = document.getElementById("health");
+  const anyFresh = datas.some(d => d && d.ts && Date.now() / 1000 - d.ts < 300);
+  let lastTs = 0;
+  datas.forEach(d => { if (d && d.ts) lastTs = Math.max(lastTs, d.ts); });
+  el.innerHTML =
+    `<div class="pill">🔌 Board: <b class="${anyFresh ? "ok" : "bad"}">${anyFresh ? "online" : "offline"}</b></div>` +
+    `<div class="pill">Last update: <b class="${anyFresh ? "ok" : "bad"}">${lastTs ? ago(lastTs) : "—"}</b></div>` +
+    `<div class="pill">History records: <b>${datas.reduce((s, d) => s + (d && d.count ? d.count : 0), 0)}</b></div>`;
+}
+
+function renderDaily(hist) {
+  const rows = {};
+  BATTS.forEach((n, i) => {
+    (hist[i] || []).forEach(h => {
+      if (h.soc === undefined || !h.ts) return;
+      const k = dayKey(h.ts);
+      const key = k + "|" + n;
+      if (!rows[key]) rows[key] = { day: k, b: n, min: h.soc, max: h.soc, sum: 0, cnt: 0 };
+      const r = rows[key];
+      r.min = Math.min(r.min, h.soc); r.max = Math.max(r.max, h.soc);
+      r.sum += h.soc; r.cnt++;
+    });
+  });
+  const list = Object.values(rows).sort((a, b) => b.day.localeCompare(a.day) || a.b - b.b);
+  document.getElementById("daily").innerHTML = list.length
+    ? list.map(r => `<tr><td>${r.day}</td><td>Battery ${r.b}</td><td>${r.max}% — ${r.min}%</td><td>${Math.round(r.sum / r.cnt)}%</td><td>${r.cnt}</td></tr>`).join("")
+    : `<tr><td colspan="5">no history yet</td></tr>`;
+}
+
+function renderEvents(hist) {
+  const evs = [];
+  BATTS.forEach((n, i) => {
+    const hs = (hist[i] || []).slice().sort((a, b) => a.ts - b.ts).filter(h => h.ts);
+    let prev = null;
+    hs.forEach(h => {
+      if (prev) {
+        if (h.ts - prev.ts > 1800) {
+          evs.push({ ts: prev.ts, e: `battery ${n} offline — no data` });
+          evs.push({ ts: h.ts, e: `battery ${n} back online` });
+        }
+        const was = prev.a > 0.5, now = h.a > 0.5;
+        if (!was && now) evs.push({ ts: h.ts, e: `battery ${n} started charging` });
+        if (was && !now) evs.push({ ts: h.ts, e: `battery ${n} stopped charging` });
+      }
+      prev = h;
+    });
+  });
+  evs.sort((a, b) => b.ts - a.ts);
+  document.getElementById("events").innerHTML = evs.length
+    ? evs.slice(0, 12).map(e => `<tr><td>${fmtTime(e.ts)}</td><td>${e.e}</td></tr>`).join("")
+    : `<tr><td colspan="2">no events yet</td></tr>`;
+}
+
 async function pull() {
   const st = document.getElementById("status");
   try {
     for (const n of BATTS) {
       const [d, h] = await Promise.all([
         fetch(`${BASE}/batteries/${n}.json`).then(r => r.json()),
-        fetch(`${BASE}/history/${n}.json?orderBy="$key"&limitToLast=40`).then(r => r.json())
+        fetch(`${BASE}/history/${n}.json?orderBy="$key"&limitToLast=500`).then(r => r.json())
       ]);
       const hist = h ? Object.keys(h).sort().map(k => h[k]) : null;
+      if (hist) d.count = hist.length;
       document.getElementById("b" + n).outerHTML = `<div id="b${n}">${card(n, d, hist)}</div>`;
       drawSpark(n, hist);
+      window["_hist" + n] = hist;
+      window["_live" + n] = d;
     }
+    renderHealth(BATTS.map(n => window["_live" + n]));
+    renderDaily(BATTS.map(n => window["_hist" + n]));
+    renderEvents(BATTS.map(n => window["_hist" + n]));
     st.innerHTML = `<span class="dot ok"></span>live · updated ${new Date().toLocaleTimeString()}`;
   } catch (e) {
     st.innerHTML = `<span class="dot stale"></span>connection problem — retrying…`;
