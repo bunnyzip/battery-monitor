@@ -66,7 +66,6 @@
     <div class="status-line" id="status"><span class="dot stale"></span>connecting…</div>
   </div>
   <div class="grid" id="grid"></div>
-  <div class="grid" style="margin-top:16px"><div id="twrap"></div></div>
 
   <div class="panel">
     <h3>🩺 System health</h3>
@@ -100,32 +99,6 @@
 <script>
 const BASE = "https://battery-monitor-a1063-default-rtdb.asia-southeast1.firebasedatabase.app";
 const BATTS = [1, 2];
-
-function tankCard(t) {
-  const fresh = t && t.ts && (Date.now() / 1000 - t.ts < 300) && t.online;
-  const lvl = t && t.lvl !== undefined ? t.lvl : 0;
-  const color = lvl > 50 ? "#2196f3" : lvl > 20 ? "#f39c12" : "#e74c3c";
-  const pump = (t.pump || "—").toUpperCase();
-  const pumpColor = pump === "ON" ? "#27ae60" : "#7f8c8d";
-  const dot = fresh ? `<span class="dot ok"></span>` : `<span class="dot stale"></span>`;
-  const tile = (val, lbl) => `<div class="tile"><div class="v">${val}</div><div class="l">${lbl}</div></div>`;
-  return `<div class="card" id="tcard">
-    <div class="bhead">
-      <div class="mac" style="font-weight:700;opacity:1;font-size:.9em">💧 WATER TANK</div>
-      <div class="model">MAHMUD MONITOR</div>
-      <div class="mac">192.168.88.24</div>
-      <div class="arcwrap">${socArc(lvl, color)}
-        <div class="arclabel"><div class="l">LEVEL</div><div class="v">${lvl}%</div></div>
-      </div>
-    </div>
-    <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
-      ${tile(lvl + "%", "Water Level")}
-      ${tile(`<span style="color:${pumpColor}">${pump}</span>`, "Pump")}
-      ${tile(t && t.ts ? ago(t.ts) : "—", "Updated")}
-    </div>
-    <div class="mosbar">${dot} tank ESP ${fresh ? "reachable" : "unreachable"}</div>
-  </div>`;
-}
 
 function f(v, d = 2) { return (v === null || v === undefined || isNaN(v)) ? "—" : Number(v).toFixed(d); }
 
@@ -341,9 +314,6 @@ async function pull() {
       window["_hist" + n] = hist;
       window["_live" + n] = d;
     }
-    fetch(`${BASE}/tank/latest.json`).then(r => r.json()).then(t => {
-      document.getElementById("twrap").innerHTML = tankCard(t);
-    }).catch(() => {});
     renderHealth(BATTS.map(n => window["_live" + n]));
     renderDaily(BATTS.map(n => window["_hist" + n]));
     renderEvents(BATTS.map(n => window["_hist" + n]));
