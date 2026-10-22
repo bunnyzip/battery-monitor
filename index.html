@@ -84,6 +84,13 @@
     <tbody id="events"></tbody></table>
   </div>
 
+  <div class="panel">
+    <h3>💡 Load shedding</h3>
+    <div class="pills" id="shedstatus" style="margin-bottom:10px"></div>
+    <table><thead><tr><th>Power cut started</th><th>Power back</th><th>Duration</th><th>Battery</th></tr></thead>
+    <tbody id="shed"></tbody></table>
+  </div>
+
   <div class="footer">
     Data straight from the ESP32 board → Firebase · auto-refresh 30s · no server needed<br>
     <a href="https://github.com/bunnyzip/battery-monitor">project repo</a>
@@ -253,6 +260,45 @@ function renderEvents(hist) {
     : `<tr><td colspan="2">no events yet</td></tr>`;
 }
 
+function fmtDur(s) {
+  if (s < 90) return Math.floor(s) + "s";
+  if (s < 5400) return Math.floor(s / 60) + " min";
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return h + "h " + m + "m";
+}
+
+function renderShedding(hist) {
+  const periods = [];
+  let ongoing = null;
+  BATTS.forEach((n, i) => {
+    const hs = (hist[i] || []).slice().sort((a, b) => a.ts - b.ts).filter(h => h.ts && h.a !== undefined);
+    let start = null;
+    hs.forEach(h => {
+      const dis = Number(h.a) < -0.5, chg = Number(h.a) > 0.5;
+      if (dis && !start) start = h.ts;
+      if (start && chg) {
+        periods.push({ s: start, e: h.ts, n });
+        start = null;
+      }
+    });
+    if (start) {
+      const last = hs[hs.length - 1];
+      ongoing = { s: start, n, last: last ? last.ts : start };
+    }
+  });
+  const st = document.getElementById("shedstatus");
+  if (ongoing) {
+    st.innerHTML = `<div class="pill" style="border-color:#e74c3c">🔻 Load shedding: <b class="bad">ONGOING</b> since ${fmtTime(ongoing.s)} (${fmtDur((ongoing.last || Date.now() / 1000) - ongoing.s)}) · battery ${ongoing.n} discharging</div>`;
+  } else {
+    st.innerHTML = `<div class="pill" style="border-color:#2ecc71">✅ Power: <b class="ok">ON</b> — no load shedding right now</div>`;
+  }
+  periods.sort((a, b) => b.s - a.s);
+  document.getElementById("shed").innerHTML = periods.length
+    ? periods.slice(0, 15).map(p =>
+        `<tr><td>${fmtTime(p.s)}</td><td>${fmtTime(p.e)}</td><td>${fmtDur(p.e - p.s)}</td><td>Battery ${p.n}</td></tr>`).join("")
+    : `<tr><td colspan="4">no load shedding recorded yet</td></tr>`;
+}
+
 async function pull() {
   const st = document.getElementById("status");
   try {
@@ -271,6 +317,7 @@ async function pull() {
     renderHealth(BATTS.map(n => window["_live" + n]));
     renderDaily(BATTS.map(n => window["_hist" + n]));
     renderEvents(BATTS.map(n => window["_hist" + n]));
+    renderShedding(BATTS.map(n => window["_hist" + n]));
     st.innerHTML = `<span class="dot ok"></span>live · updated ${new Date().toLocaleTimeString()}`;
   } catch (e) {
     st.innerHTML = `<span class="dot stale"></span>connection problem — retrying…`;
